@@ -45,11 +45,86 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	return true;
 }
 
+class ItemCardHook
+{
+public:
+	static void Hook()
+	{
+		_ProcessMessageInv = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_InventoryMenu[0])).write_vfunc(0x4, ProcessMessageInv);
+		_ProcessMessageGft = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_GiftMenu[0])).write_vfunc(0x4, ProcessMessageGft);
+		_ProcessMessageCrf = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_CraftingMenu[0])).write_vfunc(0x4, ProcessMessageCrf);
+		_ProcessMessageCon = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_ContainerMenu[0])).write_vfunc(0x4, ProcessMessageCon);
+		_ProcessMessageBar = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_BarterMenu[0])).write_vfunc(0x4, ProcessMessageBar);
+	}
+
+private:
+	static bool is_shield(RE::InventoryMenu* menu)
+	{
+		if (auto selected = _generic_foo_<50086, RE::ItemList::Item*(RE::ItemList*)>::eval(menu->itemList);
+			selected && selected->data.objDesc && selected->data.objDesc->GetObject()) {
+			if (auto shield_ = selected->data.objDesc->GetObject(); shield_ && shield_->As<RE::TESObjectARMO>()) {
+				if ((uint32_t)shield_->As<RE::TESObjectARMO>()->GetSlotMask() &
+					(uint32_t)RE::BIPED_MODEL::BipedObjectSlot::kShield) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	static void update_label(RE::InventoryMenu* menu)
+	{
+		if (auto movie = menu->uiMovie.get(); menu->itemList && movie) {
+			RE::GFxValue ApparelArmorLabel;
+			if (movie->GetVariable(&ApparelArmorLabel, "_root.Menu_mc.itemCardFadeHolder.ItemCard_mc.ApparelArmorLabel")) {
+				if (is_shield(menu)) {
+					ApparelArmorLabel.SetMember("htmlText", "$f314_STB_TestUI_SHIELD_LABEL");
+				} else {
+					ApparelArmorLabel.SetMember("htmlText", "$ARMOR");
+				}
+			}
+		}
+	}
+
+	static RE::UI_MESSAGE_RESULTS ProcessMessageInv(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	{
+		update_label(menu);
+		return _ProcessMessageInv(menu, a_message);
+	}
+	static RE::UI_MESSAGE_RESULTS ProcessMessageGft(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	{
+		update_label(menu);
+		return _ProcessMessageGft(menu, a_message);
+	}
+	static RE::UI_MESSAGE_RESULTS ProcessMessageCrf(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	{
+		update_label(menu);
+		return _ProcessMessageCrf(menu, a_message);
+	}
+	static RE::UI_MESSAGE_RESULTS ProcessMessageCon(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	{
+		update_label(menu);
+		return _ProcessMessageCon(menu, a_message);
+	}
+	static RE::UI_MESSAGE_RESULTS ProcessMessageBar(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	{
+		update_label(menu);
+		return _ProcessMessageBar(menu, a_message);
+	}
+
+	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageInv;
+	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageGft;
+	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageCrf;
+	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageCon;
+	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageBar;
+};
+
 static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
 {
 	switch (message->type) {
 	case SKSE::MessagingInterface::kDataLoaded:
-		//
+		ItemCardHook::Hook();
 
 		break;
 	}
