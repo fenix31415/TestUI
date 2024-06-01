@@ -202,3 +202,8 @@ target_precompile_headers(
 	PRIVATE
 		src/PCH.h
 )
+
+add_custom_command(
+	TARGET ${PROJECT_NAME} POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> "e:/MO2_Data/mods/TestUI/skse/plugins/"
+)

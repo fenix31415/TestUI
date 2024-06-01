@@ -52,72 +52,131 @@ public:
 	{
 		_ProcessMessageInv = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_InventoryMenu[0])).write_vfunc(0x4, ProcessMessageInv);
 		_ProcessMessageGft = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_GiftMenu[0])).write_vfunc(0x4, ProcessMessageGft);
-		_ProcessMessageCrf = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_CraftingMenu[0])).write_vfunc(0x4, ProcessMessageCrf);
 		_ProcessMessageCon = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_ContainerMenu[0])).write_vfunc(0x4, ProcessMessageCon);
 		_ProcessMessageBar = REL::Relocation<uintptr_t>(REL::ID(RE::VTABLE_BarterMenu[0])).write_vfunc(0x4, ProcessMessageBar);
+
+		auto& trmpl = SKSE::GetTrampoline();
+		_SetItemCardInfoCrf = trmpl.write_call<5>(REL::ID(50566).address() + 0x6a, SetItemCardInfoCrf);    // SkyrimSE.exe+8743BA
+		_SetItemCardInfoEnc = trmpl.write_branch<5>(REL::ID(50561).address() + 0xa, SetItemCardInfoEnc);   // SkyrimSE.exe+873A9A
+		_SetItemCardInfoSm1 = trmpl.write_call<5>(REL::ID(50568).address() + 0x30, SetItemCardInfoSm1);    // SkyrimSE.exe+874840
+		_SetItemCardInfoSm2 = trmpl.write_call<5>(REL::ID(50568).address() + 0x7b, SetItemCardInfoSm2);    // SkyrimSE.exe+87488B
 	}
 
 private:
-	static bool is_shield(RE::InventoryMenu* menu)
+	static bool is_shield(RE::ItemList* itemlist)
 	{
-		if (auto selected = _generic_foo_<50086, RE::ItemList::Item*(RE::ItemList*)>::eval(menu->itemList);
-			selected && selected->data.objDesc && selected->data.objDesc->GetObject()) {
-			if (auto shield_ = selected->data.objDesc->GetObject(); shield_ && shield_->As<RE::TESObjectARMO>()) {
-				if ((uint32_t)shield_->As<RE::TESObjectARMO>()->GetSlotMask() &
-					(uint32_t)RE::BIPED_MODEL::BipedObjectSlot::kShield) {
-					return true;
-				}
+		if (itemlist && !itemlist->root.IsNull()) {
+			if (auto selected = _generic_foo_<50086, RE::ItemList::Item*(RE::ItemList*)>::eval(itemlist);
+				selected && selected->data.objDesc) {
+				return is_shield(selected->data.objDesc);
 			}
 		}
 
 		return false;
 	}
 
-	static void update_label(RE::InventoryMenu* menu)
+	template <typename Menu>
+	static void update_label(Menu* menu)
 	{
+		static_assert(std::is_base_of<RE::IMenu, Menu>::value);
+
 		if (auto movie = menu->uiMovie.get(); menu->itemList && movie) {
 			RE::GFxValue ApparelArmorLabel;
 			if (movie->GetVariable(&ApparelArmorLabel, "_root.Menu_mc.itemCardFadeHolder.ItemCard_mc.ApparelArmorLabel")) {
-				if (is_shield(menu)) {
-					ApparelArmorLabel.SetMember("htmlText", "$f314_STB_TestUI_SHIELD_LABEL");
-				} else {
-					ApparelArmorLabel.SetMember("htmlText", "$ARMOR");
-				}
+				update_label(ApparelArmorLabel, is_shield(menu->itemList));
 			}
 		}
 	}
 
 	static RE::UI_MESSAGE_RESULTS ProcessMessageInv(RE::InventoryMenu* menu, RE::UIMessage& a_message)
 	{
-		update_label(menu);
-		return _ProcessMessageInv(menu, a_message);
+		auto ans = _ProcessMessageInv(menu, a_message);
+		if (a_message.type.get() != RE::UI_MESSAGE_TYPE::kHide)
+			update_label(menu);
+		return ans;
 	}
-	static RE::UI_MESSAGE_RESULTS ProcessMessageGft(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	static RE::UI_MESSAGE_RESULTS ProcessMessageGft(RE::GiftMenu* menu, RE::UIMessage& a_message)
 	{
-		update_label(menu);
-		return _ProcessMessageGft(menu, a_message);
+		auto ans = _ProcessMessageGft(menu, a_message);
+		if (a_message.type.get() != RE::UI_MESSAGE_TYPE::kHide)
+			update_label(menu);
+		return ans;
 	}
-	static RE::UI_MESSAGE_RESULTS ProcessMessageCrf(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	static RE::UI_MESSAGE_RESULTS ProcessMessageCon(RE::ContainerMenu* menu, RE::UIMessage& a_message)
 	{
-		update_label(menu);
-		return _ProcessMessageCrf(menu, a_message);
+		auto ans = _ProcessMessageCon(menu, a_message);
+		if (a_message.type.get() != RE::UI_MESSAGE_TYPE::kHide)
+			update_label(menu);
+		return ans;
 	}
-	static RE::UI_MESSAGE_RESULTS ProcessMessageCon(RE::InventoryMenu* menu, RE::UIMessage& a_message)
+	static RE::UI_MESSAGE_RESULTS ProcessMessageBar(RE::BarterMenu* menu, RE::UIMessage& a_message)
 	{
-		update_label(menu);
-		return _ProcessMessageCon(menu, a_message);
-	}
-	static RE::UI_MESSAGE_RESULTS ProcessMessageBar(RE::InventoryMenu* menu, RE::UIMessage& a_message)
-	{
-		update_label(menu);
-		return _ProcessMessageBar(menu, a_message);
+		auto ans = _ProcessMessageBar(menu, a_message);
+		if (a_message.type.get() != RE::UI_MESSAGE_TYPE::kHide)
+			update_label(menu);
+		return ans;
 	}
 
 	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageInv;
-	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageGft;
-	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageCrf;
-	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageCon;
-	static inline REL::Relocation<decltype(ProcessMessageInv)> _ProcessMessageBar;
+	static inline REL::Relocation<decltype(ProcessMessageGft)> _ProcessMessageGft;
+	static inline REL::Relocation<decltype(ProcessMessageCon)> _ProcessMessageCon;
+	static inline REL::Relocation<decltype(ProcessMessageBar)> _ProcessMessageBar;
+
+	static bool is_shield(RE::InventoryEntryData* item)
+	{
+		if (auto shield_ = item->GetObject(); shield_ && shield_->As<RE::TESObjectARMO>()) {
+			if ((uint32_t)shield_->As<RE::TESObjectARMO>()->GetSlotMask() & (uint32_t)RE::BIPED_MODEL::BipedObjectSlot::kShield) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	static void update_label(RE::GFxValue& ApparelArmorLabel, bool to_new)
+	{
+		if (to_new) {
+			ApparelArmorLabel.SetMember("htmlText", "$f314_STB_TestUI_SHIELD_LABEL");
+		} else {
+			ApparelArmorLabel.SetMember("htmlText", "$ARMOR");
+		}
+	}
+
+	static void update_label(RE::CraftingSubMenus::CraftingSubMenu* menu, RE::InventoryEntryData* item)
+	{
+		if (auto movie = menu->view) {
+			RE::GFxValue ApparelArmorLabel;
+			if (movie->GetVariable(&ApparelArmorLabel, "_root.Menu.ItemInfo.ApparelArmorLabel")) {
+				update_label(ApparelArmorLabel, is_shield(item));
+			}
+		}
+	}
+
+	static void SetItemCardInfoCrf(RE::CraftingSubMenus::CraftingSubMenu* menu, RE::InventoryEntryData* item)
+	{
+		_SetItemCardInfoCrf(menu, item);
+		update_label(menu, item);
+	}
+	static void SetItemCardInfoEnc(RE::CraftingSubMenus::CraftingSubMenu* menu, RE::InventoryEntryData* item)
+	{
+		_SetItemCardInfoCrf(menu, item);
+		update_label(menu, item);
+	}
+	static void SetItemCardInfoSm1(RE::CraftingSubMenus::CraftingSubMenu* menu, RE::InventoryEntryData* item)
+	{
+		_SetItemCardInfoSm1(menu, item);
+		update_label(menu, item);
+	}
+	static void SetItemCardInfoSm2(RE::CraftingSubMenus::CraftingSubMenu* menu, RE::InventoryEntryData* item)
+	{
+		_SetItemCardInfoSm2(menu, item);
+		update_label(menu, item);
+	}
+
+	static inline REL::Relocation<decltype(SetItemCardInfoCrf)> _SetItemCardInfoCrf;
+	static inline REL::Relocation<decltype(SetItemCardInfoEnc)> _SetItemCardInfoEnc;
+	static inline REL::Relocation<decltype(SetItemCardInfoSm1)> _SetItemCardInfoSm1;
+	static inline REL::Relocation<decltype(SetItemCardInfoSm2)> _SetItemCardInfoSm2;
 };
 
 static void SKSEMessageHandler(SKSE::MessagingInterface::Message* message)
